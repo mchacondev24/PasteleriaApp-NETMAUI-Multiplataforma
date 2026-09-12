@@ -1,0 +1,243 @@
+@page "/production"
+@inject DatabaseService DbService
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <!-- Top Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>🥣 Módulo de Elaboración & Producción de Pastelería</h2>
+            <p style="color: var(--md-text-secondary); font-size: 13px;">
+                Control de recetas, órdenes de horneado, consumo de materia prima y rendimiento de lotes.
+            </p>
+        </div>
+        <button class="md-btn md-btn-primary" @onclick="OpenNewOrderModal">
+            ➕ Nueva Orden de Producción / Horneado
+        </button>
+    </div>
+
+    <!-- Active Production Orders & Recipes Grid -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Recipes List -->
+        <div class="md-card">
+            <div class="md-card-header">
+                <div class="md-card-title">📖 Recetas Estándar de la Pastelería</div>
+                <span class="md-badge md-badge-primary">@recipes.Count Recetas</span>
+            </div>
+
+            <div class="md-table-container">
+                <table class="md-table">
+                    <thead>
+                        <tr>
+                            <th>Receta / Producto</th>
+                            <th>Rendimiento</th>
+                            <th>Costo Insumos</th>
+                            <th>Costo Unit. Final</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in recipes)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@r.ProductName</strong>
+                                </td>
+                                <td>@r.YieldQuantity @r.YieldUnit</td>
+                                <td>C$ @r.EstimatedCost.ToString("N2")</td>
+                                <td><span class="md-badge md-badge-success">C$ @r.FinalUnitCost.ToString("N2")</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Orders History -->
+        <div class="md-card">
+            <div class="md-card-header">
+                <div class="md-card-title">📋 Lotes & Órdenes de Producción Recientes</div>
+                <span class="md-badge md-badge-info">@productionOrders.Count Órdenes</span>
+            </div>
+
+            <div class="md-table-container">
+                <table class="md-table">
+                    <thead>
+                        <tr>
+                            <th>No. Orden</th>
+                            <th>Lote</th>
+                            <th>Producto</th>
+                            <th>Cant.</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!productionOrders.Any())
+                        {
+                            <tr>
+                                <td colspan="6" style="text-align: center; color: var(--md-text-muted);">No hay órdenes de producción registradas.</td>
+                            </tr>
+                        }
+                        @foreach (var o in productionOrders)
+                        {
+                            <tr>
+                                <td><strong>@o.OrderNumber</strong></td>
+                                <td>@o.BatchCode</td>
+                                <td>@o.ProductName</td>
+                                <td>@o.QuantityToProduce.ToString("N0")</td>
+                                <td>
+                                    <span class="md-badge @(o.Status == "Completado" ? "md-badge-success" : "md-badge-warning")">
+                                        @o.Status
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (o.Status == "Pendiente")
+                                    {
+                                        <button class="md-btn md-btn-success md-btn-sm" @onclick="() => CompleteOrderAsync(o)">
+                                            ✔️ Hornear & Ingresar
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Order Modal -->
+@if (showNewOrderModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showNewOrderModal = false">
+        <div class="md-modal" @onclick:stopPropagation>
+            <div class="md-card-title">🥣 Iniciar Orden de Elaboración de Pastelería</div>
+
+            <div class="md-form-group">
+                <label class="md-label">Seleccionar Receta</label>
+                <select class="md-select" @bind="selectedRecipeId">
+                    @foreach (var r in recipes)
+                    {
+                        <option value="@r.Id">@r.ProductName (Rinde @r.YieldQuantity @r.YieldUnit)</option>
+                    }
+                </select>
+            </div>
+
+            <div class="md-form-group">
+                <label class="md-label">Cantidad de Lotes / Unidades a Elaborar</label>
+                <input type="number" min="1" step="1" class="md-input" @bind="batchQuantity" />
+            </div>
+
+            <div class="md-form-group">
+                <label class="md-label">Código de Lote</label>
+                <input type="text" class="md-input" @bind="batchCode" />
+            </div>
+
+            <div class="md-form-group">
+                <label class="md-label">Notas de Elaboración</label>
+                <textarea class="md-textarea" rows="2" placeholder="Observaciones de horneado o temperatura..." @bind="orderNotes"></textarea>
+            </div>
+
+            <div style="background: var(--md-warning-light); color: var(--md-warning); padding: 12px; border-radius: var(--md-radius-sm); font-size: 12px;">
+                ⚠️ Al completar la orden, el sistema descontará automáticamente los insumos (harina, azúcar, huevos, etc.) de bodega y aumentará el stock del producto terminado.
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showNewOrderModal = false">Cancelar</button>
+                <button class="md-btn md-btn-primary" @onclick="CreateOrderAsync">Crear Orden</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Recipe> recipes = new();
+    private List<ProductionOrder> productionOrders = new();
+    private bool showNewOrderModal = false;
+
+    private int selectedRecipeId = 1;
+    private decimal batchQuantity = 2;
+    private string batchCode = $"LOT-{DateTime.Now:MMdd}-01";
+    private string orderNotes = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        recipes = await db.Table<Recipe>().ToListAsync();
+        productionOrders = await db.Table<ProductionOrder>().OrderByDescending(o => o.CreatedAt).ToListAsync();
+    }
+
+    private void OpenNewOrderModal()
+    {
+        batchCode = $"LOT-{DateTime.Now:MMdd}-{DateTime.Now.Ticks % 100:D2}";
+        showNewOrderModal = true;
+    }
+
+    private async Task CreateOrderAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        var recipe = recipes.FirstOrDefault(r => r.Id == selectedRecipeId);
+        if (recipe == null) return;
+
+        var orderNumber = $"OP-{DateTime.Now:yyyyMMdd}-{DateTime.Now.Ticks % 1000:D3}";
+        var totalCost = recipe.FinalUnitCost * batchQuantity;
+
+        var order = new ProductionOrder
+        {
+            OrderNumber = orderNumber,
+            RecipeId = recipe.Id,
+            ProductId = recipe.ProductId,
+            ProductName = recipe.ProductName,
+            QuantityToProduce = batchQuantity,
+            BatchCode = batchCode,
+            Status = "Pendiente",
+            Notes = orderNotes,
+            TotalCost = totalCost,
+            CreatedAt = DateTime.Now
+        };
+
+        await db.InsertAsync(order);
+        showNewOrderModal = false;
+        await LoadDataAsync();
+    }
+
+    private async Task CompleteOrderAsync(ProductionOrder order)
+    {
+        var db = await DbService.GetConnectionAsync();
+        var recipeItems = await db.Table<RecipeItem>().Where(i => i.RecipeId == order.RecipeId).ToListAsync();
+        var ingredients = await db.Table<Ingredient>().ToListAsync();
+
+        // 1. Deduct ingredients
+        foreach (var item in recipeItems)
+        {
+            var ing = ingredients.FirstOrDefault(i => i.Id == item.IngredientId);
+            if (ing != null)
+            {
+                decimal needed = item.QuantityRequired * order.QuantityToProduce;
+                ing.CurrentStock = Math.Max(0, ing.CurrentStock - needed);
+                await db.UpdateAsync(ing);
+            }
+        }
+
+        // 2. Increase finished product stock
+        var product = await db.Table<Product>().FirstOrDefaultAsync(p => p.Id == order.ProductId);
+        if (product != null)
+        {
+            product.Stock += order.QuantityToProduce;
+            await db.UpdateAsync(product);
+        }
+
+        // 3. Mark order as completed
+        order.ActualQuantityProduced = order.QuantityToProduce;
+        order.Status = "Completado";
+        order.CompletedAt = DateTime.Now;
+        await db.UpdateAsync(order);
+
+        await LoadDataAsync();
+    }
+}

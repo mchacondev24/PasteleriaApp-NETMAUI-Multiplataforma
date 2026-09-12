@@ -1,0 +1,173 @@
+@page "/reports"
+@inject BakeryReportsService ReportsService
+@inject GeminiAiService AiService
+@inject IJSRuntime JSRuntime
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <div>
+        <h2>📊 Centro de 10 Reportes Especializados de Pastelería</h2>
+        <p style="color: var(--md-text-secondary); font-size: 13px;">
+            Análisis financiero, producción, márgenes de recetas, kardex, DGI, cumpleaños e Inteligencia Artificial.
+        </p>
+    </div>
+
+    <!-- Report Selector & Filters Bar -->
+    <div class="md-card" style="padding: 16px;">
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 12px; align-items: flex-end;">
+            <div class="md-form-group" style="margin-bottom: 0;">
+                <label class="md-label">Seleccionar Uno de los 10 Reportes</label>
+                <select class="md-select" @bind="selectedReportId" @bind:after="GenerateReportAsync">
+                    <option value="1">1. Ventas y Facturación Diaria / Periódica (DGI & Multimoneda)</option>
+                    <option value="2">2. Costos de Recetas y Margen de Utilidad por Producto</option>
+                    <option value="3">3. Control de Producción y Rendimiento de Lotes Horneados</option>
+                    <option value="4">4. Kardex e Inventario de Materia Prima / Insumos</option>
+                    <option value="5">5. Proyección de Demanda Estimada con IA (Gemini)</option>
+                    <option value="6">6. Ventas al Crédito y Cuentas por Cobrar (CxC)</option>
+                    <option value="7">7. Compras e Insumos al Crédito (Cuentas por Pagar - CxP)</option>
+                    <option value="8">8. Ranking de Productos Más Vendidos (Top Panes, Pasteles y Bebidas)</option>
+                    <option value="9">9. Agenda de Cumpleaños de Clientes del Mes & Fidelización</option>
+                    <option value="10">10. Auditoría de Comandas, Mesas y Rendimiento de Meseros</option>
+                </select>
+            </div>
+
+            <div class="md-form-group" style="margin-bottom: 0;">
+                <label class="md-label">Fecha Desde</label>
+                <input type="date" class="md-input" @bind="fromDate" />
+            </div>
+
+            <div class="md-form-group" style="margin-bottom: 0;">
+                <label class="md-label">Fecha Hasta</label>
+                <input type="date" class="md-input" @bind="toDate" />
+            </div>
+
+            <button class="md-btn md-btn-primary" @onclick="GenerateReportAsync">
+                🔄 Generar Reporte
+            </button>
+        </div>
+    </div>
+
+    <!-- Report Output Card -->
+    @if (currentReport != null)
+    {
+        <div class="md-card">
+            <div class="md-card-header">
+                <div>
+                    <div class="md-card-title">@currentReport.Title</div>
+                    <div style="font-size: 12px; color: var(--md-text-secondary); margin-top: 2px;">@currentReport.Subtitle</div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="md-btn md-btn-outlined md-btn-sm" @onclick="ExportCsv">
+                        📥 Exportar CSV
+                    </button>
+                </div>
+            </div>
+
+            <!-- Summary Banner -->
+            @if (!string.IsNullOrEmpty(currentReport.SummaryText))
+            {
+                <div style="background: var(--md-surface-variant); padding: 12px 16px; border-radius: var(--md-radius-sm); margin-bottom: 14px; font-weight: 600; font-size: 13px; color: var(--md-primary-dark);">
+                    📌 @currentReport.SummaryText
+                </div>
+            }
+
+            <!-- Data Table -->
+            <div class="md-table-container">
+                <table class="md-table">
+                    <thead>
+                        <tr>
+                            @foreach (var header in currentReport.Headers)
+                            {
+                                <th>@header</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!currentReport.Rows.Any())
+                        {
+                            <tr>
+                                <td colspan="@currentReport.Headers.Count" style="text-align: center; color: var(--md-text-muted);">
+                                    No hay registros para este reporte en el rango de fechas seleccionado.
+                                </td>
+                            </tr>
+                        }
+                        @foreach (var row in currentReport.Rows)
+                        {
+                            <tr>
+                                <td>@row.Col1</td>
+                                @if (currentReport.Headers.Count > 1) { <td>@row.Col2</td> }
+                                @if (currentReport.Headers.Count > 2) { <td>@row.Col3</td> }
+                                @if (currentReport.Headers.Count > 3) { <td>@row.Col4</td> }
+                                @if (currentReport.Headers.Count > 4) { <td>@row.Col5</td> }
+                                @if (currentReport.Headers.Count > 5) { <td>@row.Col6</td> }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private int selectedReportId = 1;
+    private DateTime fromDate = DateTime.Today.AddDays(-30);
+    private DateTime toDate = DateTime.Today;
+    private ReportResult? currentReport;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GenerateReportAsync();
+    }
+
+    private async Task GenerateReportAsync()
+    {
+        switch (selectedReportId)
+        {
+            case 1:
+                currentReport = await ReportsService.GetSalesReportAsync(fromDate, toDate);
+                break;
+            case 2:
+                currentReport = await ReportsService.GetRecipeCostsReportAsync();
+                break;
+            case 3:
+                currentReport = await ReportsService.GetProductionOrdersReportAsync(fromDate, toDate);
+                break;
+            case 4:
+                currentReport = await ReportsService.GetIngredientsKardexReportAsync();
+                break;
+            case 5:
+                currentReport = await ReportsService.GetProjectedDemandReportAsync(AiService);
+                break;
+            case 6:
+                currentReport = await ReportsService.GetAccountsReceivableReportAsync();
+                break;
+            case 7:
+                currentReport = await ReportsService.GetAccountsPayableReportAsync();
+                break;
+            case 8:
+                currentReport = await ReportsService.GetTopSellingProductsReportAsync(fromDate, toDate);
+                break;
+            case 9:
+                currentReport = await ReportsService.GetCustomerBirthdaysReportAsync(DateTime.Today.Month);
+                break;
+            case 10:
+                currentReport = await ReportsService.GetTablesAndWaitersReportAsync(fromDate, toDate);
+                break;
+        }
+        StateHasChanged();
+    }
+
+    private async Task ExportCsv()
+    {
+        if (currentReport == null) return;
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine(string.Join(",", currentReport.Headers.Select(h => $"\"{h}\"")));
+        foreach (var r in currentReport.Rows)
+        {
+            var cols = new List<string> { r.Col1, r.Col2, r.Col3, r.Col4, r.Col5, r.Col6 }.Take(currentReport.Headers.Count);
+            csv.AppendLine(string.Join(",", cols.Select(c => $"\"{c}\"")));
+        }
+        var fileName = $"Reporte_Pasteleria_{selectedReportId}_{DateTime.Now:yyyyMMdd}.csv";
+        await JSRuntime.InvokeVoidAsync("pasteleriaApp.downloadTextFile", fileName, csv.ToString());
+    }
+}

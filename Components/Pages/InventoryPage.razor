@@ -1,0 +1,152 @@
+@page "/inventory"
+@inject DatabaseService DbService
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>📦 Insumos, Materia Prima & Kardex</h2>
+            <p style="color: var(--md-text-secondary); font-size: 13px;">
+                Trazabilidad de harina, azúcar, mantequilla, huevos, lácteos, empaques y café.
+            </p>
+        </div>
+        <button class="md-btn md-btn-primary" @onclick="OpenNewIngredientModal">
+            ➕ Registrar Insumo / Materia Prima
+        </button>
+    </div>
+
+    <!-- Inventory Table -->
+    <div class="md-card">
+        <div class="md-card-header">
+            <div class="md-card-title">📦 Stock Actual de Ingredientes en Bodega</div>
+            <span class="md-badge md-badge-primary">@ingredients.Count Insumos</span>
+        </div>
+
+        <div class="md-table-container">
+            <table class="md-table">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Insumo / Materia Prima</th>
+                        <th>Unidad</th>
+                        <th>Costo Unit. C$</th>
+                        <th>Stock Actual</th>
+                        <th>Stock Mínimo</th>
+                        <th>Valor Total C$</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var ing in ingredients)
+                    {
+                        <tr>
+                            <td><strong>@ing.Code</strong></td>
+                            <td>@ing.Name</td>
+                            <td>@ing.Unit</td>
+                            <td>C$ @ing.CostPerUnit.ToString("N2")</td>
+                            <td><strong>@ing.CurrentStock.ToString("N1")</strong></td>
+                            <td>@ing.MinStock.ToString("N1")</td>
+                            <td>C$ @((ing.CurrentStock * ing.CostPerUnit).ToString("N2"))</td>
+                            <td>
+                                <span class="md-badge @(ing.CurrentStock > ing.MinStock ? "md-badge-success" : "md-badge-danger")">
+                                    @(ing.CurrentStock > ing.MinStock ? "Normal" : "⚠️ Reabastecer")
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- New Ingredient Modal -->
+@if (showNewIngredientModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showNewIngredientModal = false">
+        <div class="md-modal" @onclick:stopPropagation>
+            <div class="md-card-title">📦 Registrar Nuevo Insumo</div>
+
+            <div class="md-form-group">
+                <label class="md-label">Código</label>
+                <input type="text" class="md-input" @bind="newIngredient.Code" />
+            </div>
+
+            <div class="md-form-group">
+                <label class="md-label">Nombre del Insumo</label>
+                <input type="text" class="md-input" placeholder="Ej. Chocolate Amargo 70%" @bind="newIngredient.Name" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Unidad</label>
+                    <select class="md-select" @bind="newIngredient.Unit">
+                        <option value="Lb">Libra (Lb)</option>
+                        <option value="Kg">Kilogramo (Kg)</option>
+                        <option value="Litros">Litros</option>
+                        <option value="Lata">Lata / Envase</option>
+                        <option value="Unidad">Unidad / Huevos</option>
+                    </select>
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Costo por Unidad C$</label>
+                    <input type="number" step="0.5" class="md-input" @bind="newIngredient.CostPerUnit" />
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Stock Inicial</label>
+                    <input type="number" class="md-input" @bind="newIngredient.CurrentStock" />
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Stock Mínimo de Alerta</label>
+                    <input type="number" class="md-input" @bind="newIngredient.MinStock" />
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showNewIngredientModal = false">Cancelar</button>
+                <button class="md-btn md-btn-primary" @onclick="SaveIngredientAsync">Guardar Insumo</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Ingredient> ingredients = new();
+    private bool showNewIngredientModal = false;
+    private Ingredient newIngredient = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        ingredients = await db.Table<Ingredient>().ToListAsync();
+    }
+
+    private void OpenNewIngredientModal()
+    {
+        newIngredient = new Ingredient
+        {
+            Code = $"INS-{ingredients.Count + 1:D3}",
+            Unit = "Lb",
+            CostPerUnit = 20,
+            CurrentStock = 10,
+            MinStock = 5
+        };
+        showNewIngredientModal = true;
+    }
+
+    private async Task SaveIngredientAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newIngredient.Name)) return;
+        var db = await DbService.GetConnectionAsync();
+        await db.InsertAsync(newIngredient);
+        showNewIngredientModal = false;
+        await LoadDataAsync();
+    }
+}

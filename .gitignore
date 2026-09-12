@@ -1,0 +1,11 @@
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.idea/
+*.db3
+*.db3-journal
+appsettings.Development.json

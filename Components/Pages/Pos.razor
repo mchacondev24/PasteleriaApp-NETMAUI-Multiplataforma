@@ -1,0 +1,615 @@
+@page "/"
+@inject DatabaseService DbService
+@inject BarcodeScannerService BarcodeScanner
+@inject ScaleWeighingService ScaleService
+@inject ThermalPrinterService PrinterService
+@inject DgiNicaraguaFiscalService FiscalService
+@inject IJSRuntime JSRuntime
+
+<div class="pos-grid">
+    <!-- Catalog Section -->
+    <div class="pos-catalog">
+        <!-- Search & Hardware Bar -->
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="flex: 1; position: relative;">
+                <input type="text" class="md-input" style="width: 100%; padding-left: 36px;" placeholder="🔍 Buscar producto por nombre o código de barras..." @bind="searchQuery" @bind:event="oninput" />
+                <span style="position: absolute; left: 12px; top: 10px; font-size: 16px;">🥐</span>
+            </div>
+            
+            <button class="md-btn md-btn-outlined" @onclick="OpenScaleModal" title="Conectar o pesar en Báscula de mostrador">
+                ⚖️ Báscula: @(ScaleService.CurrentWeight > 0 ? $"{ScaleService.CurrentWeight:N3} {ScaleService.Unit}" : "0.000 Lb")
+            </button>
+
+            <button class="md-btn md-btn-outlined" @onclick="OpenScannerModal" title="Escanear código de barras o QR">
+                📷 Escáner
+            </button>
+        </div>
+
+        <!-- Category Tabs -->
+        <div class="category-tabs">
+            <button class="category-tab @(selectedCategoryId == 0 ? "active" : "")" @onclick="() => SelectCategory(0)">
+                <span>✨</span> Todos (@filteredProducts.Count)
+            </button>
+            @foreach (var cat in categories)
+            {
+                <button class="category-tab @(selectedCategoryId == cat.Id ? "active" : "")" @onclick="() => SelectCategory(cat.Id)">
+                    <span>@cat.Icon</span> @cat.Name
+                </button>
+            }
+        </div>
+
+        <!-- Product Cards Grid -->
+        <div class="product-grid">
+            @foreach (var prod in filteredProducts)
+            {
+                <div class="product-card" @onclick="() => AddProductToCart(prod)">
+                    <div>
+                        <div class="product-card-icon">
+                            @(prod.CategoryId == 1 ? "🎂" : prod.CategoryId == 2 ? "🧁" : prod.CategoryId == 3 ? "🥖" : prod.CategoryId == 4 ? "☕" : prod.CategoryId == 5 ? "🥤" : "🥪")
+                        </div>
+                        <div class="product-card-name">@prod.Name</div>
+                        @if (prod.IsWeighable)
+                        {
+                            <span class="md-badge md-badge-warning" style="margin-bottom: 6px;">⚖️ Pesable (@prod.Unit)</span>
+                        }
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 8px;">
+                        <div>
+                            <div class="product-card-price">C$ @prod.SalePrice.ToString("N2")</div>
+                            <div class="product-card-price-usd">$ @prod.PriceUSD.ToString("N2")</div>
+                        </div>
+                        <span class="md-badge @(prod.Stock > prod.MinStock ? "md-badge-success" : "md-badge-danger")">
+                            @prod.Stock.ToString("N0") @prod.Unit
+                        </span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- POS Cart / Ticket Panel -->
+    <div class="pos-cart-panel">
+        <div class="pos-cart-header">
+            <div>
+                <div style="font-weight: 700; font-size: 15px;">Comanda / Ticket</div>
+                <div style="font-size: 11px; color: var(--md-text-secondary);">
+                    Mesa: <strong>@(selectedTable?.Name ?? "Mostrador / Para Llevar")</strong>
+                </div>
+            </div>
+            <button class="md-btn md-btn-outlined md-btn-sm" @onclick="OpenTableSelectModal">
+                🪑 Asignar Mesa
+            </button>
+        </div>
+
+        <!-- Cart Items List -->
+        <div class="pos-cart-items">
+            @if (!cartItems.Any())
+            {
+                <div style="text-align: center; color: var(--md-text-muted); margin-top: 60px;">
+                    <div style="font-size: 40px; margin-bottom: 8px;">🛒</div>
+                    <div>Comanda vacía</div>
+                    <div style="font-size: 11px;">Haga clic en un producto o escanee un código de barras.</div>
+                </div>
+            }
+            else
+            {
+                @foreach (var item in cartItems)
+                {
+                    <div class="pos-cart-item">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; font-size: 13px;">@item.ProductName</div>
+                            <div style="font-size: 11px; color: var(--md-text-secondary);">
+                                C$ @item.UnitPrice.ToString("N2") x @item.Quantity.ToString("N2") @item.Unit
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <button class="md-btn md-btn-outlined md-btn-sm" style="padding: 2px 8px;" @onclick="() => DecrementCartItem(item)">-</button>
+                            <span style="font-weight: 700; font-size: 13px; min-width: 24px; text-align: center;">@item.Quantity.ToString("N0")</span>
+                            <button class="md-btn md-btn-outlined md-btn-sm" style="padding: 2px 8px;" @onclick="() => IncrementCartItem(item)">+</button>
+                            <div style="font-weight: 700; font-size: 13px; min-width: 65px; text-align: right; color: var(--md-primary);">
+                                C$ @item.Total.ToString("N2")
+                            </div>
+                            <button class="md-btn md-btn-danger md-btn-sm" style="padding: 2px 6px;" @onclick="() => RemoveCartItem(item)">✕</button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <!-- Cart Footer / Totals -->
+        <div class="pos-cart-footer">
+            <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--md-text-secondary);">
+                <span>Subtotal:</span>
+                <span>C$ @cartSubtotal.ToString("N2")</span>
+            </div>
+            @if (settings?.EnableDgiFiscal == true)
+            {
+                <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--md-text-secondary);">
+                    <span>IVA Fiscal DGI (15%):</span>
+                    <span>C$ @cartIva.ToString("N2")</span>
+                </div>
+            }
+            <div style="display: flex; justify-content: space-between; font-size: 18px; font-weight: 800; color: var(--md-primary); border-top: 1px solid var(--md-divider); padding-top: 6px;">
+                <span>TOTAL C$:</span>
+                <span>C$ @cartTotalCordobas.ToString("N2")</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--md-text-muted);">
+                <span>TOTAL USD ($):</span>
+                <span>$ @cartTotalUSD.ToString("N2")</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
+                <button class="md-btn md-btn-outlined" @onclick="ClearCart" disabled="@(!cartItems.Any())">
+                    🗑️ Cancelar
+                </button>
+                <button class="md-btn md-btn-primary" @onclick="OpenPaymentModal" disabled="@(!cartItems.Any())">
+                    💳 Cobrar (F12)
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Weighing Modal -->
+@if (showScaleModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showScaleModal = false">
+        <div class="md-modal" style="max-width: 450px;" @onclick:stopPropagation>
+            <div class="md-card-title">⚖️ Báscula de Mostrador Digital</div>
+            <div style="text-align: center; background: var(--md-surface-variant); padding: 24px; border-radius: var(--md-radius-md); border: 2px dashed var(--md-border);">
+                <div style="font-size: 12px; color: var(--md-text-secondary); font-weight: 600;">LECTURA EN VIVO</div>
+                <div style="font-size: 44px; font-weight: 800; color: var(--md-primary); font-family: monospace;">
+                    @currentScaleWeight.ToString("N3") @ScaleService.Unit
+                </div>
+                <div style="font-size: 11px; color: var(--md-text-muted); margin-top: 4px;">
+                    Compatible con Torrey, CAS, Toledo y Cardinal (RS-232 / USB)
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="md-btn md-btn-outlined" style="flex: 1;" @onclick="ScaleTare">🟡 Tara (T)</button>
+                <button class="md-btn md-btn-outlined" style="flex: 1;" @onclick="ScaleZero">⚪ Cero (Z)</button>
+            </div>
+
+            <div class="md-form-group">
+                <label class="md-label">Ajuste Manual / Peso Simulado (@ScaleService.Unit)</label>
+                <input type="number" step="0.05" class="md-input" @bind="manualWeightInput" />
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showScaleModal = false">Cerrar</button>
+                <button class="md-btn md-btn-primary" @onclick="ApplyManualWeight">Aplicar Peso</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Table Selection Modal -->
+@if (showTableSelectModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showTableSelectModal = false">
+        <div class="md-modal" style="max-width: 500px;" @onclick:stopPropagation>
+            <div class="md-card-title">🪑 Seleccionar Mesa o Salón</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button class="md-btn @(selectedTable == null ? "md-btn-primary" : "md-btn-outlined")" @onclick="() => AssignTable(null)">
+                    🛍️ Mostrador / Para Llevar
+                </button>
+                @foreach (var table in tables)
+                {
+                    <button class="md-btn @(selectedTable?.Id == table.Id ? "md-btn-primary" : "md-btn-outlined")" @onclick="() => AssignTable(table)">
+                        🪑 @table.Name (@table.Status)
+                    </button>
+                }
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showTableSelectModal = false">Listo</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Barcode & QR Scanner Modal -->
+@if (showScannerModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showScannerModal = false">
+        <div class="md-modal" style="max-width: 450px;" @onclick:stopPropagation>
+            <div class="md-card-title">📷 Escáner de Código de Barras y QR</div>
+            <div class="md-form-group">
+                <label class="md-label">Ingreso o Lectura de Código</label>
+                <input type="text" class="md-input" placeholder="Escanee o ingrese código..." @bind="manualBarcodeInput" @onkeydown="HandleManualBarcodeKeyDown" autofocus />
+            </div>
+            <div style="font-size: 11px; color: var(--md-text-muted);">
+                ⚡ Compatible con pistolas USB/Bluetooth Honeywell, Zebra, Netum y Datalogic con ráfaga &lt;60ms.
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showScannerModal = false">Cerrar</button>
+                <button class="md-btn md-btn-primary" @onclick="SubmitManualBarcode">Buscar Código</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Payment Modal -->
+@if (showPaymentModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showPaymentModal = false">
+        <div class="md-modal" @onclick:stopPropagation>
+            <div class="md-card-title">💳 Procesar Cobro y Facturación DGI</div>
+            
+            <div style="background: var(--md-surface-variant); padding: 16px; border-radius: var(--md-radius-md); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 12px; color: var(--md-text-secondary);">TOTAL A PAGAR:</div>
+                    <div style="font-size: 26px; font-weight: 800; color: var(--md-primary);">C$ @cartTotalCordobas.ToString("N2")</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 12px; color: var(--md-text-secondary);">EQUIVALENTE USD:</div>
+                    <div style="font-size: 20px; font-weight: 700; color: var(--md-text-primary);">$ @cartTotalUSD.ToString("N2")</div>
+                </div>
+            </div>
+
+            <!-- Customer and Payment Details -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Cliente</label>
+                    <select class="md-select" @bind="selectedCustomerId">
+                        @foreach (var cust in customers)
+                        {
+                            <option value="@cust.Id">@cust.FullName (@(cust.IdentificationNumber.Length > 0 ? cust.IdentificationNumber : "Sin RUC"))</option>
+                        }
+                    </select>
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Forma de Pago</label>
+                    <select class="md-select" @bind="selectedPaymentMethod">
+                        <option value="Efectivo">Efectivo C$ / USD</option>
+                        <option value="Tarjeta">Tarjeta Débito / Crédito</option>
+                        <option value="Transferencia_LAFISE">Transferencia Banco LAFISE</option>
+                        <option value="Credito">Venta al Crédito (CxC)</option>
+                    </select>
+                </div>
+            </div>
+
+            @if (selectedPaymentMethod == "Efectivo")
+            {
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div class="md-form-group">
+                        <label class="md-label">Monto Recibido en Córdobas (C$)</label>
+                        <input type="number" step="10" class="md-input" @bind="amountReceivedCordobas" @bind:event="oninput" />
+                    </div>
+                    <div class="md-form-group">
+                        <label class="md-label">Monto Recibido en Dólares ($)</label>
+                        <input type="number" step="1" class="md-input" @bind="amountReceivedUSD" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <div style="background: var(--md-success-light); color: var(--md-success); padding: 12px; border-radius: var(--md-radius-sm); font-weight: 700; font-size: 15px; display: flex; justify-content: space-between;">
+                    <span>Cambio a Entregar:</span>
+                    <span>C$ @calculatedChangeCordobas.ToString("N2") ($ @calculatedChangeUSD.ToString("N2"))</span>
+                </div>
+            }
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showPaymentModal = false">Cancelar</button>
+                <button class="md-btn md-btn-primary md-btn-lg" @onclick="CompleteSaleAsync">
+                    ✅ Finalizar Venta & Imprimir Ticket
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Ticket Receipt Modal -->
+@if (showTicketModal && lastSale != null)
+{
+    <div class="md-modal-backdrop" @onclick="() => showTicketModal = false">
+        <div class="md-modal" style="max-width: 480px;" @onclick:stopPropagation>
+            <div class="md-card-title">🧾 Ticket de Venta Emitido</div>
+            <pre id="printableReceipt" style="background: #ffffff; color: #000000; padding: 14px; border: 1px solid #ddd; font-family: 'Courier New', monospace; font-size: 12px; max-height: 400px; overflow-y: auto; border-radius: var(--md-radius-sm);">@renderedReceiptText</pre>
+            
+            <div style="display: flex; gap: 8px; justify-content: space-between;">
+                <a href="@rawBtUrl" class="md-btn md-btn-secondary" target="_blank">
+                    📱 Imprimir RawBT
+                </a>
+                <div style="display: flex; gap: 8px;">
+                    <button class="md-btn md-btn-outlined" @onclick="PrintReceiptWeb">🖨️ Imprimir</button>
+                    <button class="md-btn md-btn-primary" @onclick="() => showTicketModal = false">Aceptar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Product> allProducts = new();
+    private List<Product> filteredProducts = new();
+    private List<Category> categories = new();
+    private List<Customer> customers = new();
+    private List<RestaurantTable> tables = new();
+    private AppSettings? settings;
+
+    private List<SaleDetail> cartItems = new();
+    private int selectedCategoryId = 0;
+    private string searchQuery = "";
+    private RestaurantTable? selectedTable;
+
+    // Modals
+    private bool showScaleModal = false;
+    private bool showScannerModal = false;
+    private bool showTableSelectModal = false;
+    private bool showPaymentModal = false;
+    private bool showTicketModal = false;
+
+    private decimal currentScaleWeight = 0;
+    private decimal manualWeightInput = 1.0m;
+    private string manualBarcodeInput = "";
+
+    // Payment fields
+    private int selectedCustomerId = 1;
+    private string selectedPaymentMethod = "Efectivo";
+    private decimal amountReceivedCordobas = 0;
+    private decimal amountReceivedUSD = 0;
+
+    // Last sale
+    private Sale? lastSale;
+    private string renderedReceiptText = "";
+    private string rawBtUrl = "";
+
+    // Calculations
+    private decimal cartSubtotal => cartItems.Sum(x => x.Subtotal);
+    private decimal cartIva => settings?.EnableDgiFiscal == true ? Math.Round(cartSubtotal * 0.15m, 2) : 0;
+    private decimal cartTotalCordobas => cartSubtotal + cartIva;
+    private decimal cartTotalUSD => (settings?.UsdExchangeRate ?? 36.62m) > 0 ? Math.Round(cartTotalCordobas / (settings?.UsdExchangeRate ?? 36.62m), 2) : 0;
+
+    private decimal totalReceivedCordobas => amountReceivedCordobas + (amountReceivedUSD * (settings?.UsdExchangeRate ?? 36.62m));
+    private decimal calculatedChangeCordobas => Math.Max(0, totalReceivedCordobas - cartTotalCordobas);
+    private decimal calculatedChangeUSD => (settings?.UsdExchangeRate ?? 36.62m) > 0 ? Math.Round(calculatedChangeCordobas / (settings?.UsdExchangeRate ?? 36.62m), 2) : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+        BarcodeScanner.OnBarcodeScanned += HandleScannedBarcode;
+        ScaleService.OnWeightChanged += HandleWeightChanged;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        settings = await db.Table<AppSettings>().FirstOrDefaultAsync() ?? new AppSettings();
+        categories = await db.Table<Category>().OrderBy(c => c.SortOrder).ToListAsync();
+        allProducts = await db.Table<Product>().Where(p => p.IsActive).ToListAsync();
+        customers = await db.Table<Customer>().ToListAsync();
+        tables = await db.Table<RestaurantTable>().ToListAsync();
+        ApplyFilter();
+    }
+
+    private void SelectCategory(int catId)
+    {
+        selectedCategoryId = catId;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        filteredProducts = allProducts.Where(p =>
+            (selectedCategoryId == 0 || p.CategoryId == selectedCategoryId) &&
+            (string.IsNullOrWhiteSpace(searchQuery) || p.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) || p.Barcode.Contains(searchQuery))
+        ).ToList();
+        StateHasChanged();
+    }
+
+    private void AddProductToCart(Product product)
+    {
+        var existing = cartItems.FirstOrDefault(i => i.ProductId == product.Id);
+        if (existing != null)
+        {
+            existing.Quantity += 1;
+            existing.Subtotal = existing.Quantity * existing.UnitPrice;
+            existing.Total = existing.Subtotal;
+        }
+        else
+        {
+            cartItems.Add(new SaleDetail
+            {
+                ProductId = product.Id,
+                ProductCode = product.Code,
+                ProductName = product.Name,
+                Quantity = 1,
+                UnitPrice = product.SalePrice,
+                UnitCost = product.CostPrice,
+                Subtotal = product.SalePrice,
+                Total = product.SalePrice,
+                Unit = product.Unit
+            });
+        }
+        _ = JSRuntime.InvokeVoidAsync("pasteleriaApp.playBeep");
+    }
+
+    private void IncrementCartItem(SaleDetail item)
+    {
+        item.Quantity += 1;
+        item.Subtotal = item.Quantity * item.UnitPrice;
+        item.Total = item.Subtotal;
+    }
+
+    private void DecrementCartItem(SaleDetail item)
+    {
+        if (item.Quantity > 1)
+        {
+            item.Quantity -= 1;
+            item.Subtotal = item.Quantity * item.UnitPrice;
+            item.Total = item.Subtotal;
+        }
+        else
+        {
+            cartItems.Remove(item);
+        }
+    }
+
+    private void RemoveCartItem(SaleDetail item)
+    {
+        cartItems.Remove(item);
+    }
+
+    private void ClearCart()
+    {
+        cartItems.Clear();
+        selectedTable = null;
+    }
+
+    private void OpenTableSelectModal() => showTableSelectModal = true;
+    private void AssignTable(RestaurantTable? table)
+    {
+        selectedTable = table;
+        showTableSelectModal = false;
+    }
+
+    private void OpenScaleModal() => showScaleModal = true;
+    private void ScaleTare() => ScaleService.SetTare();
+    private void ScaleZero() => ScaleService.ResetZero();
+    private void ApplyManualWeight()
+    {
+        ScaleService.SetSimulatedWeight(manualWeightInput);
+        showScaleModal = false;
+    }
+
+    private void OpenScannerModal()
+    {
+        manualBarcodeInput = "";
+        showScannerModal = true;
+    }
+
+    private void HandleManualBarcodeKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            SubmitManualBarcode();
+        }
+    }
+
+    private void SubmitManualBarcode()
+    {
+        if (!string.IsNullOrWhiteSpace(manualBarcodeInput))
+        {
+            HandleScannedBarcode(manualBarcodeInput.Trim());
+            showScannerModal = false;
+        }
+    }
+
+    private void HandleScannedBarcode(string code)
+    {
+        InvokeAsync(() =>
+        {
+            var prod = allProducts.FirstOrDefault(p => p.Barcode == code || p.Code == code);
+            if (prod != null)
+            {
+                AddProductToCart(prod);
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void HandleWeightChanged(decimal weight, string unit)
+    {
+        currentScaleWeight = weight;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenPaymentModal()
+    {
+        amountReceivedCordobas = cartTotalCordobas;
+        amountReceivedUSD = 0;
+        showPaymentModal = true;
+    }
+
+    private async Task CompleteSaleAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        var cust = customers.FirstOrDefault(c => c.Id == selectedCustomerId);
+
+        // Generate Fiscal Invoice if enabled
+        string fiscalNum = "";
+        if (settings?.EnableDgiFiscal == true)
+        {
+            settings.CurrentFiscalNumber++;
+            fiscalNum = FiscalService.FormatFiscalInvoiceNumber(settings.FiscalPrefix, settings.CurrentFiscalNumber);
+            await db.UpdateAsync(settings);
+        }
+
+        var invoiceCode = $"VTA-{DateTime.Now:yyyyMMdd}-{DateTime.Now.Ticks % 10000:D4}";
+
+        var sale = new Sale
+        {
+            InvoiceNumber = invoiceCode,
+            FiscalInvoiceNumber = fiscalNum,
+            DgiRuc = settings?.Ruc ?? "",
+            CustomerId = cust?.Id,
+            CustomerName = cust?.FullName ?? "Cliente General",
+            CustomerIdentification = cust?.IdentificationNumber ?? "",
+            TableId = selectedTable?.Id,
+            TableName = selectedTable?.Name ?? "",
+            SaleDate = DateTime.Now,
+            Subtotal = cartSubtotal,
+            IvaAmount = cartIva,
+            TotalCordobas = cartTotalCordobas,
+            TotalUSD = cartTotalUSD,
+            ExchangeRate = settings?.UsdExchangeRate ?? 36.62m,
+            PaymentType = selectedPaymentMethod == "Credito" ? "Credito" : "Contado",
+            PaymentMethod = selectedPaymentMethod,
+            AmountReceivedCordobas = amountReceivedCordobas,
+            AmountReceivedUSD = amountReceivedUSD,
+            ChangeCordobas = calculatedChangeCordobas,
+            ChangeUSD = calculatedChangeUSD,
+            Status = "Completada"
+        };
+
+        await db.InsertAsync(sale);
+
+        foreach (var item in cartItems)
+        {
+            item.SaleId = sale.Id;
+            await db.InsertAsync(item);
+
+            // Deduct product stock
+            var prod = allProducts.FirstOrDefault(p => p.Id == item.ProductId);
+            if (prod != null)
+            {
+                prod.Stock = Math.Max(0, prod.Stock - item.Quantity);
+                await db.UpdateAsync(prod);
+            }
+        }
+
+        // If credit sale, register movement
+        if (selectedPaymentMethod == "Credito" && cust != null)
+        {
+            cust.CurrentCreditBalance += cartTotalCordobas;
+            await db.UpdateAsync(cust);
+
+            await db.InsertAsync(new CustomerCreditMovement
+            {
+                CustomerId = cust.Id,
+                SaleId = sale.Id,
+                MovementType = "Cargo_Venta",
+                AmountCordobas = cartTotalCordobas,
+                AmountUSD = cartTotalUSD,
+                BalanceAfter = cust.CurrentCreditBalance,
+                ReferenceDoc = invoiceCode,
+                Notes = "Venta a crédito en pastelería"
+            });
+        }
+
+        lastSale = sale;
+        renderedReceiptText = PrinterService.GenerateReceiptText(sale, cartItems, settings ?? new AppSettings());
+        rawBtUrl = PrinterService.GenerateRawBtUrl(renderedReceiptText);
+
+        showPaymentModal = false;
+        showTicketModal = true;
+        cartItems.Clear();
+        selectedTable = null;
+        await LoadDataAsync();
+    }
+
+    private async Task PrintReceiptWeb()
+    {
+        await JSRuntime.InvokeVoidAsync("pasteleriaApp.printElement", "printableReceipt");
+    }
+}

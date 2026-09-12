@@ -1,0 +1,238 @@
+@page "/customers"
+@inject DatabaseService DbService
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>👥 Clientes, Cumpleaños & Cuentas por Cobrar</h2>
+            <p style="color: var(--md-text-secondary); font-size: 13px;">
+                Fidelización de clientes, fechas de cumpleaños para pedidos de pasteles y control de créditos.
+            </p>
+        </div>
+        <button class="md-btn md-btn-primary" @onclick="OpenNewCustomerModal">
+            ➕ Registrar Cliente
+        </button>
+    </div>
+
+    <!-- Birthday Alert Banner -->
+    @if (upcomingBirthdayCustomers.Any())
+    {
+        <div style="background: linear-gradient(135deg, #fce4ec, #fff3e0); border: 1.5px solid #f48fb1; border-radius: var(--md-radius-md); padding: 16px; display: flex; align-items: center; gap: 16px;">
+            <div style="font-size: 36px;">🎂</div>
+            <div>
+                <div style="font-weight: 700; font-size: 15px; color: #880e4f;">
+                    ¡Próximos Cumpleaños de Clientes (@upcomingBirthdayCustomers.Count)!
+                </div>
+                <div style="font-size: 12px; color: #4a148c; margin-top: 2px;">
+                    Clientes con cumpleaños en los próximos 7 días: 
+                    @string.Join(", ", upcomingBirthdayCustomers.Select(c => $"{c.FullName} ({c.Birthday?.ToString("dd/MM")})"))
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Customers Table -->
+    <div class="md-card">
+        <div class="md-table-container">
+            <table class="md-table">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Cédula / RUC</th>
+                        <th>Teléfono</th>
+                        <th>Cumpleaños</th>
+                        <th>Límite Crédito</th>
+                        <th>Saldo Pendiente C$</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in customers)
+                    {
+                        <tr>
+                            <td><strong>@c.FullName</strong></td>
+                            <td>@c.IdentificationNumber</td>
+                            <td>@c.Phone</td>
+                            <td>
+                                @if (c.Birthday != null)
+                                {
+                                    <span class="md-badge md-badge-primary">🎂 @c.Birthday.Value.ToString("dd/MM")</span>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--md-text-muted);">No registrado</span>
+                                }
+                            </td>
+                            <td>C$ @c.CreditLimit.ToString("N2")</td>
+                            <td>
+                                @if (c.CurrentCreditBalance > 0)
+                                {
+                                    <strong style="color: var(--md-danger);">C$ @c.CurrentCreditBalance.ToString("N2")</strong>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--md-success);">Al día</span>
+                                }
+                            </td>
+                            <td>
+                                @if (c.CurrentCreditBalance > 0)
+                                {
+                                    <button class="md-btn md-btn-success md-btn-sm" @onclick="() => OpenAbonoModal(c)">
+                                        💵 Registrar Abono
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- New Customer Modal -->
+@if (showNewCustomerModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showNewCustomerModal = false">
+        <div class="md-modal" @onclick:stopPropagation>
+            <div class="md-card-title">👥 Registrar Nuevo Cliente</div>
+
+            <div class="md-form-group">
+                <label class="md-label">Nombre Completo</label>
+                <input type="text" class="md-input" placeholder="Nombre y Apellidos" @bind="newCustomer.FullName" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Cédula de Identidad / RUC</label>
+                    <input type="text" class="md-input" placeholder="000-000000-0000A" @bind="newCustomer.IdentificationNumber" />
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Teléfono / WhatsApp</label>
+                    <input type="text" class="md-input" placeholder="+505 8888-8888" @bind="newCustomer.Phone" />
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Fecha de Cumpleaños</label>
+                    <input type="date" class="md-input" @bind="newCustomerBirthday" />
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Límite de Crédito C$</label>
+                    <input type="number" step="500" class="md-input" @bind="newCustomer.CreditLimit" />
+                </div>
+            </div>
+
+            <div class="md-form-group">
+                <label class="md-label">Dirección</label>
+                <input type="text" class="md-input" placeholder="Granada / Managua..." @bind="newCustomer.Address" />
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showNewCustomerModal = false">Cancelar</button>
+                <button class="md-btn md-btn-primary" @onclick="SaveCustomerAsync">Guardar Cliente</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Abono / Payment Modal -->
+@if (showAbonoModal && selectedCustomerForAbono != null)
+{
+    <div class="md-modal-backdrop" @onclick="() => showAbonoModal = false">
+        <div class="md-modal" style="max-width: 420px;" @onclick:stopPropagation>
+            <div class="md-card-title">💵 Registrar Abono a Cuenta</div>
+            <div style="font-size: 13px; color: var(--md-text-secondary); margin-bottom: 8px;">
+                Cliente: <strong>@selectedCustomerForAbono.FullName</strong><br />
+                Saldo Actual: <strong style="color: var(--md-danger);">C$ @selectedCustomerForAbono.CurrentCreditBalance.ToString("N2")</strong>
+            </div>
+
+            <div class="md-form-group">
+                <label class="md-label">Monto del Abono C$</label>
+                <input type="number" class="md-input" @bind="abonoAmount" />
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showAbonoModal = false">Cancelar</button>
+                <button class="md-btn md-btn-success" @onclick="SaveAbonoAsync">Aplicar Abono</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Customer> customers = new();
+    private List<Customer> upcomingBirthdayCustomers = new();
+    private bool showNewCustomerModal = false;
+    private bool showAbonoModal = false;
+    private Customer newCustomer = new();
+    private DateTime? newCustomerBirthday;
+    private Customer? selectedCustomerForAbono;
+    private decimal abonoAmount = 100;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCustomersAsync();
+    }
+
+    private async Task LoadCustomersAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        customers = await db.Table<Customer>().ToListAsync();
+
+        var today = DateTime.Today;
+        upcomingBirthdayCustomers = customers
+            .Where(c => c.Birthday != null &&
+                        ((c.Birthday.Value.Month == today.Month && c.Birthday.Value.Day >= today.Day && c.Birthday.Value.Day <= today.Day + 7) ||
+                         (today.Day >= 25 && c.Birthday.Value.Month == (today.Month % 12) + 1 && c.Birthday.Value.Day <= 7)))
+            .ToList();
+    }
+
+    private void OpenNewCustomerModal()
+    {
+        newCustomer = new Customer { CreditLimit = 2000 };
+        newCustomerBirthday = DateTime.Today;
+        showNewCustomerModal = true;
+    }
+
+    private async Task SaveCustomerAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newCustomer.FullName)) return;
+        var db = await DbService.GetConnectionAsync();
+        newCustomer.Birthday = newCustomerBirthday;
+        await db.InsertAsync(newCustomer);
+        showNewCustomerModal = false;
+        await LoadCustomersAsync();
+    }
+
+    private void OpenAbonoModal(Customer customer)
+    {
+        selectedCustomerForAbono = customer;
+        abonoAmount = customer.CurrentCreditBalance;
+        showAbonoModal = true;
+    }
+
+    private async Task SaveAbonoAsync()
+    {
+        if (selectedCustomerForAbono == null || abonoAmount <= 0) return;
+        var db = await DbService.GetConnectionAsync();
+
+        selectedCustomerForAbono.CurrentCreditBalance = Math.Max(0, selectedCustomerForAbono.CurrentCreditBalance - abonoAmount);
+        await db.UpdateAsync(selectedCustomerForAbono);
+
+        await db.InsertAsync(new CustomerCreditMovement
+        {
+            CustomerId = selectedCustomerForAbono.Id,
+            MovementType = "Abono_Pago",
+            AmountCordobas = abonoAmount,
+            AmountUSD = Math.Round(abonoAmount / 36.62m, 2),
+            BalanceAfter = selectedCustomerForAbono.CurrentCreditBalance,
+            ReferenceDoc = $"ABO-{DateTime.Now:yyyyMMdd}-{DateTime.Now.Ticks % 1000:D3}",
+            Notes = "Abono a saldo de crédito en pastelería"
+        });
+
+        showAbonoModal = false;
+        await LoadCustomersAsync();
+    }
+}

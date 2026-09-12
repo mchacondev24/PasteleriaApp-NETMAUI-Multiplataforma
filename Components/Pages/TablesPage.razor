@@ -1,0 +1,123 @@
+@page "/tables"
+@inject DatabaseService DbService
+@inject NavigationManager Navigation
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>🪑 Administración de Mesas & Comandas de Salón</h2>
+            <p style="color: var(--md-text-secondary); font-size: 13px;">
+                Gestión de terraza colonial, salón principal, jardín y barra de cafetería.
+            </p>
+        </div>
+        <button class="md-btn md-btn-primary" @onclick="OpenNewTableModal">
+            ➕ Agregar Mesa / Ubicación
+        </button>
+    </div>
+
+    <!-- Tables Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px;">
+        @foreach (var table in tables)
+        {
+            <div class="md-card" style="border-top: 4px solid @(table.Status == "Disponible" ? "var(--md-success)" : table.Status == "Ocupada" ? "var(--md-danger)" : "var(--md-warning)");">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="font-weight: 700; font-size: 16px;">@table.Name</div>
+                    <span class="md-badge @(table.Status == "Disponible" ? "md-badge-success" : table.Status == "Ocupada" ? "md-badge-danger" : "md-badge-warning")">
+                        @table.Status
+                    </span>
+                </div>
+
+                <div style="font-size: 12px; color: var(--md-text-secondary); margin-bottom: 12px;">
+                    👥 Capacidad: @table.Capacity personas
+                    @if (!string.IsNullOrEmpty(table.CurrentWaiter))
+                    {
+                        <div>👤 Mesero: <strong>@table.CurrentWaiter</strong></div>
+                    }
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button class="md-btn md-btn-primary md-btn-sm" style="flex: 1;" @onclick="() => OpenComandaInPos(table)">
+                        🛍️ Abrir Comanda
+                    </button>
+                    <button class="md-btn md-btn-outlined md-btn-sm" @onclick="() => ToggleTableStatus(table)">
+                        Cambiar Estado
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- New Table Modal -->
+@if (showNewTableModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showNewTableModal = false">
+        <div class="md-modal" style="max-width: 400px;" @onclick:stopPropagation>
+            <div class="md-card-title">➕ Nueva Mesa</div>
+            <div class="md-form-group">
+                <label class="md-label">Nombre / Ubicación</label>
+                <input type="text" class="md-input" placeholder="Ej. Mesa 6 (Jardín)" @bind="newTableName" />
+            </div>
+            <div class="md-form-group">
+                <label class="md-label">Capacidad (Personas)</label>
+                <input type="number" class="md-input" @bind="newTableCapacity" />
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showNewTableModal = false">Cancelar</button>
+                <button class="md-btn md-btn-primary" @onclick="SaveTableAsync">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<RestaurantTable> tables = new();
+    private bool showNewTableModal = false;
+    private string newTableName = "";
+    private int newTableCapacity = 4;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTablesAsync();
+    }
+
+    private async Task LoadTablesAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        tables = await db.Table<RestaurantTable>().ToListAsync();
+    }
+
+    private void OpenNewTableModal()
+    {
+        newTableName = $"Mesa {tables.Count + 1}";
+        newTableCapacity = 4;
+        showNewTableModal = true;
+    }
+
+    private async Task SaveTableAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newTableName)) return;
+        var db = await DbService.GetConnectionAsync();
+        await db.InsertAsync(new RestaurantTable
+        {
+            Name = newTableName,
+            Capacity = newTableCapacity,
+            Status = "Disponible"
+        });
+        showNewTableModal = false;
+        await LoadTablesAsync();
+    }
+
+    private async Task ToggleTableStatus(RestaurantTable table)
+    {
+        table.Status = table.Status == "Disponible" ? "Ocupada" : table.Status == "Ocupada" ? "EnLimpieza" : "Disponible";
+        var db = await DbService.GetConnectionAsync();
+        await db.UpdateAsync(table);
+        await LoadTablesAsync();
+    }
+
+    private void OpenComandaInPos(RestaurantTable table)
+    {
+        Navigation.NavigateTo("/");
+    }
+}

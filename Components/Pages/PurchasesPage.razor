@@ -1,0 +1,202 @@
+@page "/purchases"
+@inject DatabaseService DbService
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>🛒 Compras & Proveedores de Insumos</h2>
+            <p style="color: var(--md-text-secondary); font-size: 13px;">
+                Adquisición de harina, azúcar, lácteos, empaques y control de Cuentas por Pagar (CxP).
+            </p>
+        </div>
+        <button class="md-btn md-btn-primary" @onclick="OpenNewPurchaseModal">
+            ➕ Registrar Compra
+        </button>
+    </div>
+
+    <!-- Purchases Table -->
+    <div class="md-card">
+        <div class="md-card-header">
+            <div class="md-card-title">📦 Historial de Compras de Materia Prima</div>
+            <span class="md-badge md-badge-primary">@purchases.Count Compras</span>
+        </div>
+
+        <div class="md-table-container">
+            <table class="md-table">
+                <thead>
+                    <tr>
+                        <th>No. Factura Proveedor</th>
+                        <th>Proveedor</th>
+                        <th>Fecha</th>
+                        <th>Tipo Pago</th>
+                        <th>Total C$</th>
+                        <th>Total USD</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (!purchases.Any())
+                    {
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: var(--md-text-muted);">No hay compras registradas aún.</td>
+                        </tr>
+                    }
+                    @foreach (var p in purchases)
+                    {
+                        <tr>
+                            <td><strong>@p.InvoiceNumber</strong></td>
+                            <td>@p.SupplierName</td>
+                            <td>@p.PurchaseDate.ToString("dd/MM/yyyy")</td>
+                            <td><span class="md-badge md-badge-info">@p.PaymentType</span></td>
+                            <td><strong>C$ @p.TotalCordobas.ToString("N2")</strong></td>
+                            <td>$ @p.TotalUSD.ToString("N2")</td>
+                            <td><span class="md-badge md-badge-success">@p.Status</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- New Purchase Modal -->
+@if (showNewPurchaseModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showNewPurchaseModal = false">
+        <div class="md-modal" @onclick:stopPropagation>
+            <div class="md-card-title">🛒 Registrar Nueva Compra de Insumos</div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">No. Factura / Recibo Proveedor</label>
+                    <input type="text" class="md-input" placeholder="Ej. FAC-98450" @bind="newPurchaseInvoice" />
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Proveedor</label>
+                    <select class="md-select" @bind="selectedSupplierId">
+                        @foreach (var s in suppliers)
+                        {
+                            <option value="@s.Id">@s.CompanyName (RUC: @s.Ruc)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Insumo / Ingrediente a Comprar</label>
+                    <select class="md-select" @bind="selectedIngredientId">
+                        @foreach (var ing in ingredients)
+                        {
+                            <option value="@ing.Id">@ing.Name (@ing.Unit) - Costo C$ @ing.CostPerUnit</option>
+                        }
+                    </select>
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Cantidad Adquirida</label>
+                    <input type="number" step="1" class="md-input" @bind="purchaseQuantity" />
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Costo Total Compra C$</label>
+                    <input type="number" step="10" class="md-input" @bind="purchaseTotalCordobas" />
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Condición de Pago</label>
+                    <select class="md-select" @bind="purchasePaymentType">
+                        <option value="Contado">Contado</option>
+                        <option value="Credito">Crédito (Cuentas por Pagar)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showNewPurchaseModal = false">Cancelar</button>
+                <button class="md-btn md-btn-primary" @onclick="SavePurchaseAsync">Guardar Compra</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Purchase> purchases = new();
+    private List<Supplier> suppliers = new();
+    private List<Ingredient> ingredients = new();
+
+    private bool showNewPurchaseModal = false;
+    private string newPurchaseInvoice = "";
+    private int selectedSupplierId = 1;
+    private int selectedIngredientId = 1;
+    private decimal purchaseQuantity = 25;
+    private decimal purchaseTotalCordobas = 500;
+    private string purchasePaymentType = "Contado";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        suppliers = await db.Table<Supplier>().ToListAsync();
+        ingredients = await db.Table<Ingredient>().ToListAsync();
+        purchases = await db.Table<Purchase>().OrderByDescending(p => p.PurchaseDate).ToListAsync();
+    }
+
+    private void OpenNewPurchaseModal()
+    {
+        newPurchaseInvoice = $"FAC-{DateTime.Now:yyyyMM}-{DateTime.Now.Ticks % 1000:D3}";
+        showNewPurchaseModal = true;
+    }
+
+    private async Task SavePurchaseAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        var sup = suppliers.FirstOrDefault(s => s.Id == selectedSupplierId);
+        var ing = ingredients.FirstOrDefault(i => i.Id == selectedIngredientId);
+
+        var purchase = new Purchase
+        {
+            InvoiceNumber = newPurchaseInvoice,
+            SupplierId = sup?.Id ?? 1,
+            SupplierName = sup?.CompanyName ?? "Proveedor General",
+            PurchaseDate = DateTime.Now,
+            TotalCordobas = purchaseTotalCordobas,
+            TotalUSD = Math.Round(purchaseTotalCordobas / 36.62m, 2),
+            ExchangeRate = 36.62m,
+            PaymentType = purchasePaymentType,
+            Status = "Recibida"
+        };
+
+        await db.InsertAsync(purchase);
+
+        if (ing != null)
+        {
+            ing.CurrentStock += purchaseQuantity;
+            await db.UpdateAsync(ing);
+
+            await db.InsertAsync(new PurchaseDetail
+            {
+                PurchaseId = purchase.Id,
+                IngredientId = ing.Id,
+                IngredientName = ing.Name,
+                Quantity = purchaseQuantity,
+                Unit = ing.Unit,
+                UnitCost = purchaseQuantity > 0 ? (purchaseTotalCordobas / purchaseQuantity) : 0,
+                Subtotal = purchaseTotalCordobas
+            });
+        }
+
+        if (purchasePaymentType == "Credito" && sup != null)
+        {
+            sup.CurrentDebt += purchaseTotalCordobas;
+            await db.UpdateAsync(sup);
+        }
+
+        showNewPurchaseModal = false;
+        await LoadDataAsync();
+    }
+}

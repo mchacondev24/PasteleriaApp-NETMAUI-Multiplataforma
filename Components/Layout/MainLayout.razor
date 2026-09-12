@@ -1,0 +1,77 @@
+@inherits LayoutComponentBase
+@inject IJSRuntime JSRuntime
+@inject DatabaseService DbService
+@inject LocalServerService ServerService
+
+<div class="app-container">
+    <aside class="app-sidebar">
+        <NavMenu />
+    </aside>
+
+    <div class="app-content">
+        <header class="app-header">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <span class="md-badge md-badge-primary">🍰 Pastelería & Cafetería</span>
+                @if (ServerService.IsRunning)
+                {
+                    <span class="md-badge md-badge-success">🟢 Servidor Central Activo (:5055)</span>
+                }
+                else
+                {
+                    <span class="md-badge md-badge-info">💻 Terminal Local</span>
+                }
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--md-text-secondary); background: var(--md-surface-variant); padding: 6px 12px; border-radius: var(--md-radius-full);">
+                    <span>💵 1 USD = C$ @exchangeRate.ToString("N2")</span>
+                </div>
+
+                <!-- Theme Switcher -->
+                <button class="md-btn md-btn-outlined md-btn-sm" @onclick="ToggleTheme" title="Cambiar Tema Día/Noche">
+                    @(isDark ? "☀️ Día" : "🌙 Noche")
+                </button>
+
+                <!-- Coffee button for Maxwell Chacon -->
+                <a href="about" class="md-btn md-btn-secondary md-btn-sm" style="text-decoration: none;">
+                    ☕ ¡Invítame a un Café!
+                </a>
+            </div>
+        </header>
+
+        <main class="app-main">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    private bool isDark = false;
+    private decimal exchangeRate = 36.62m;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var db = await DbService.GetConnectionAsync();
+            var settings = await db.Table<AppSettings>().FirstOrDefaultAsync();
+            if (settings != null)
+            {
+                exchangeRate = settings.UsdExchangeRate;
+                if (settings.SelectedTheme == "dark")
+                {
+                    isDark = true;
+                    await JSRuntime.InvokeVoidAsync("pasteleriaApp.setTheme", "dark");
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task ToggleTheme()
+    {
+        isDark = !isDark;
+        var theme = isDark ? "dark" : "light";
+        await JSRuntime.InvokeVoidAsync("pasteleriaApp.setTheme", theme);
+    }
+}

@@ -1,0 +1,136 @@
+@page "/sales"
+@inject DatabaseService DbService
+@inject ThermalPrinterService PrinterService
+@inject IJSRuntime JSRuntime
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>🧾 Ventas & Facturación Fiscal DGI</h2>
+            <p style="color: var(--md-text-secondary); font-size: 13px;">
+                Historial de transacciones de pastelería, facturas con RUC e IVA 15%.
+            </p>
+        </div>
+    </div>
+
+    <!-- Filters Bar -->
+    <div class="md-card" style="padding: 14px;">
+        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+            <div class="md-form-group" style="margin-bottom: 0;">
+                <label class="md-label">Desde</label>
+                <input type="date" class="md-input" @bind="fromDate" />
+            </div>
+            <div class="md-form-group" style="margin-bottom: 0;">
+                <label class="md-label">Hasta</label>
+                <input type="date" class="md-input" @bind="toDate" />
+            </div>
+            <button class="md-btn md-btn-primary" @onclick="LoadSalesAsync">
+                🔍 Filtrar Ventas
+            </button>
+        </div>
+    </div>
+
+    <!-- Sales History Table -->
+    <div class="md-card">
+        <div class="md-table-container">
+            <table class="md-table">
+                <thead>
+                    <tr>
+                        <th>No. Ticket / Factura</th>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Mesa / Salón</th>
+                        <th>Método Pago</th>
+                        <th>Subtotal C$</th>
+                        <th>IVA DGI (15%)</th>
+                        <th>Total C$</th>
+                        <th>Total USD</th>
+                        <th>Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (!sales.Any())
+                    {
+                        <tr>
+                            <td colspan="10" style="text-align: center; color: var(--md-text-muted);">No se encontraron ventas en este período.</td>
+                        </tr>
+                    }
+                    @foreach (var s in sales)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@(string.IsNullOrEmpty(s.FiscalInvoiceNumber) ? s.InvoiceNumber : s.FiscalInvoiceNumber)</strong>
+                            </td>
+                            <td>@s.SaleDate.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@s.CustomerName</td>
+                            <td>@(string.IsNullOrEmpty(s.TableName) ? "Mostrador" : s.TableName)</td>
+                            <td><span class="md-badge md-badge-info">@s.PaymentType (@s.PaymentMethod)</span></td>
+                            <td>C$ @s.Subtotal.ToString("N2")</td>
+                            <td>C$ @s.IvaAmount.ToString("N2")</td>
+                            <td><strong style="color: var(--md-primary);">C$ @s.TotalCordobas.ToString("N2")</strong></td>
+                            <td>$ @s.TotalUSD.ToString("N2")</td>
+                            <td>
+                                <button class="md-btn md-btn-outlined md-btn-sm" @onclick="() => ViewTicket(s)">
+                                    🧾 Ver Ticket
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Ticket Modal -->
+@if (showTicketModal && selectedSale != null)
+{
+    <div class="md-modal-backdrop" @onclick="() => showTicketModal = false">
+        <div class="md-modal" style="max-width: 450px;" @onclick:stopPropagation>
+            <div class="md-card-title">🧾 Detalle del Ticket</div>
+            <pre id="reprintReceipt" style="background: #fff; color: #000; padding: 12px; font-family: monospace; font-size: 12px; max-height: 380px; overflow-y: auto; border: 1px solid #ccc;">@receiptText</pre>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button class="md-btn md-btn-outlined" @onclick="PrintReceiptWeb">🖨️ Imprimir</button>
+                <button class="md-btn md-btn-primary" @onclick="() => showTicketModal = false">Cerrar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Sale> sales = new();
+    private DateTime fromDate = DateTime.Today.AddDays(-7);
+    private DateTime toDate = DateTime.Today;
+    private bool showTicketModal = false;
+    private Sale? selectedSale;
+    private string receiptText = "";
+    private AppSettings? settings;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        settings = await db.Table<AppSettings>().FirstOrDefaultAsync() ?? new AppSettings();
+        await LoadSalesAsync();
+    }
+
+    private async Task LoadSalesAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        var all = await db.Table<Sale>().ToListAsync();
+        sales = all.Where(s => s.SaleDate.Date >= fromDate.Date && s.SaleDate.Date <= toDate.Date).OrderByDescending(s => s.SaleDate).ToList();
+    }
+
+    private async Task ViewTicket(Sale sale)
+    {
+        selectedSale = sale;
+        var db = await DbService.GetConnectionAsync();
+        var items = await db.Table<SaleDetail>().Where(d => d.SaleId == sale.Id).ToListAsync();
+        receiptText = PrinterService.GenerateReceiptText(sale, items, settings ?? new AppSettings());
+        showTicketModal = true;
+    }
+
+    private async Task PrintReceiptWeb()
+    {
+        await JSRuntime.InvokeVoidAsync("pasteleriaApp.printElement", "reprintReceipt");
+    }
+}

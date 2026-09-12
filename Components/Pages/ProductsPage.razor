@@ -1,0 +1,209 @@
+@page "/products"
+@inject DatabaseService DbService
+@inject IJSRuntime JSRuntime
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>🧁 Catálogo de Productos & Precios</h2>
+            <p style="color: var(--md-text-secondary); font-size: 13px;">
+                Pasteles, repostería, panadería tradicional, cafés y batidos.
+            </p>
+        </div>
+        <button class="md-btn md-btn-primary" @onclick="OpenNewProductModal">
+            ➕ Nuevo Producto
+        </button>
+    </div>
+
+    <!-- Product Table -->
+    <div class="md-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <input type="text" class="md-input" placeholder="🔍 Buscar por código, barra o nombre..." @bind="searchFilter" @bind:event="oninput" style="max-width: 320px;" />
+            <span class="md-badge md-badge-primary">@filteredProducts.Count Productos</span>
+        </div>
+
+        <div class="md-table-container">
+            <table class="md-table">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Barras</th>
+                        <th>Producto</th>
+                        <th>Categoría</th>
+                        <th>Costo C$</th>
+                        <th>Precio Venta C$</th>
+                        <th>Precio USD</th>
+                        <th>Stock</th>
+                        <th>Tipo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in filteredProducts)
+                    {
+                        <tr>
+                            <td><strong>@p.Code</strong></td>
+                            <td><code>@p.Barcode</code></td>
+                            <td>@p.Name</td>
+                            <td><span class="md-badge md-badge-info">@p.CategoryName</span></td>
+                            <td>C$ @p.CostPrice.ToString("N2")</td>
+                            <td><strong style="color: var(--md-primary);">C$ @p.SalePrice.ToString("N2")</strong></td>
+                            <td>$ @p.PriceUSD.ToString("N2")</td>
+                            <td>
+                                <span class="md-badge @(p.Stock > p.MinStock ? "md-badge-success" : "md-badge-danger")">
+                                    @p.Stock.ToString("N0") @p.Unit
+                                </span>
+                            </td>
+                            <td>
+                                @if (p.IsWeighable)
+                                {
+                                    <span class="md-badge md-badge-warning">⚖️ Balanza</span>
+                                }
+                                else if (p.IsProduced)
+                                {
+                                    <span class="md-badge md-badge-primary">🥣 Elaborado</span>
+                                }
+                                else
+                                {
+                                    <span class="md-badge md-badge-secondary">Directo</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- New Product Modal -->
+@if (showNewProductModal)
+{
+    <div class="md-modal-backdrop" @onclick="() => showNewProductModal = false">
+        <div class="md-modal" @onclick:stopPropagation>
+            <div class="md-card-title">🧁 Registrar Nuevo Producto</div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Código</label>
+                    <input type="text" class="md-input" @bind="newProduct.Code" />
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Código de Barras / QR</label>
+                    <input type="text" class="md-input" @bind="newProduct.Barcode" />
+                </div>
+            </div>
+
+            <div class="md-form-group">
+                <label class="md-label">Nombre del Producto</label>
+                <input type="text" class="md-input" @bind="newProduct.Name" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Categoría</label>
+                    <select class="md-select" @bind="newProduct.CategoryId">
+                        @foreach (var c in categories)
+                        {
+                            <option value="@c.Id">@c.Icon @c.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Unidad de Medida</label>
+                    <select class="md-select" @bind="newProduct.Unit">
+                        <option value="Unidad">Unidad</option>
+                        <option value="Porción">Porción</option>
+                        <option value="Lb">Libra (Lb)</option>
+                        <option value="Kg">Kilogramo (Kg)</option>
+                        <option value="Taza">Taza / Vaso</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                <div class="md-form-group">
+                    <label class="md-label">Costo Unitario C$</label>
+                    <input type="number" step="0.5" class="md-input" @bind="newProduct.CostPrice" />
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Precio Venta C$</label>
+                    <input type="number" step="0.5" class="md-input" @bind="newProduct.SalePrice" />
+                </div>
+                <div class="md-form-group">
+                    <label class="md-label">Stock Inicial</label>
+                    <input type="number" step="1" class="md-input" @bind="newProduct.Stock" />
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 16px; margin-top: 4px;">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+                    <input type="checkbox" @bind="newProduct.IsWeighable" />
+                    <span>Producto Pesable en Báscula</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+                    <input type="checkbox" @bind="newProduct.IsProduced" />
+                    <span>Elaborado en Pastelería (Requiere Receta)</span>
+                </label>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;">
+                <button class="md-btn md-btn-outlined" @onclick="() => showNewProductModal = false">Cancelar</button>
+                <button class="md-btn md-btn-primary" @onclick="SaveProductAsync">Guardar Producto</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Product> products = new();
+    private List<Category> categories = new();
+    private string searchFilter = "";
+    private bool showNewProductModal = false;
+    private Product newProduct = new();
+
+    private List<Product> filteredProducts => products.Where(p =>
+        string.IsNullOrWhiteSpace(searchFilter) ||
+        p.Name.Contains(searchFilter, StringComparison.OrdinalIgnoreCase) ||
+        p.Code.Contains(searchFilter, StringComparison.OrdinalIgnoreCase) ||
+        p.Barcode.Contains(searchFilter)
+    ).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var db = await DbService.GetConnectionAsync();
+        categories = await db.Table<Category>().ToListAsync();
+        products = await db.Table<Product>().ToListAsync();
+    }
+
+    private void OpenNewProductModal()
+    {
+        newProduct = new Product
+        {
+            Code = $"PAS-{products.Count + 1:D3}",
+            Barcode = $"7431000{products.Count + 1:D4}",
+            CategoryId = categories.FirstOrDefault()?.Id ?? 1,
+            Unit = "Unidad",
+            MinStock = 5,
+            Stock = 10
+        };
+        showNewProductModal = true;
+    }
+
+    private async Task SaveProductAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newProduct.Name)) return;
+        var db = await DbService.GetConnectionAsync();
+        var cat = categories.FirstOrDefault(c => c.Id == newProduct.CategoryId);
+        newProduct.CategoryName = cat?.Name ?? "";
+        newProduct.PriceUSD = Math.Round(newProduct.SalePrice / 36.62m, 2);
+
+        await db.InsertAsync(newProduct);
+        showNewProductModal = false;
+        await LoadDataAsync();
+    }
+}

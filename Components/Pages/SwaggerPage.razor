@@ -1,0 +1,202 @@
+@page "/swagger"
+@inject LocalServerService ServerService
+@inject DatabaseService DbService
+@inject HttpClient Http
+
+<div style="display: flex; flex-direction: column; gap: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>⚡ Probador Interactivo de Endpoints REST (Swagger UI Embebido)</h2>
+            <p style="color: var(--md-text-secondary); font-size: 13px;">
+                Prueba los endpoints HTTP en tiempo real para terminales hijas, sincronización y pedidos en red local.
+            </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            @if (ServerService.IsRunning)
+            {
+                <span class="md-badge md-badge-success">🟢 Servidor Activo (: @ServerService.Port)</span>
+                <button class="md-btn md-btn-danger md-btn-sm" @onclick="StopServer">Detener Servidor</button>
+            }
+            else
+            {
+                <span class="md-badge md-badge-warning">🔴 Servidor Detenido</span>
+                <button class="md-btn md-btn-primary md-btn-sm" @onclick="StartServer">Iniciar Servidor</button>
+            }
+        </div>
+    </div>
+
+    <!-- Server Controls & Security Token -->
+    <div class="md-card">
+        <div style="display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 12px; align-items: flex-end;">
+            <div class="md-form-group" style="margin-bottom: 0;">
+                <label class="md-label">Puerto Local</label>
+                <input type="number" class="md-input" @bind="serverPort" />
+            </div>
+            <div class="md-form-group" style="margin-bottom: 0;">
+                <label class="md-label">Token de Seguridad (X-Auth-Token)</label>
+                <input type="text" class="md-input" @bind="authToken" />
+            </div>
+            <div>
+                <button class="md-btn md-btn-outlined" style="width: 100%;" @onclick="ViewSwaggerSpec">
+                    📄 Ver OpenAPI Spec
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Endpoints List -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <!-- Endpoints Navigation -->
+        <div class="md-card">
+            <div class="md-card-title" style="margin-bottom: 12px;">🔗 Endpoints Disponibles</div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div style="border: 1px solid var(--md-border); border-radius: var(--md-radius-sm); padding: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="md-badge md-badge-success">GET</span>
+                        <strong style="margin-left: 6px;">/api/health</strong>
+                        <div style="font-size: 11px; color: var(--md-text-muted);">Verifica estado del servidor</div>
+                    </div>
+                    <button class="md-btn md-btn-outlined md-btn-sm" @onclick='() => ExecuteEndpoint("GET", "/api/health")'>Probar</button>
+                </div>
+
+                <div style="border: 1px solid var(--md-border); border-radius: var(--md-radius-sm); padding: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="md-badge md-badge-success">GET</span>
+                        <strong style="margin-left: 6px;">/api/products</strong>
+                        <div style="font-size: 11px; color: var(--md-text-muted);">Catálogo de pastelería</div>
+                    </div>
+                    <button class="md-btn md-btn-outlined md-btn-sm" @onclick='() => ExecuteEndpoint("GET", "/api/products")'>Probar</button>
+                </div>
+
+                <div style="border: 1px solid var(--md-border); border-radius: var(--md-radius-sm); padding: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="md-badge md-badge-success">GET</span>
+                        <strong style="margin-left: 6px;">/api/categories</strong>
+                        <div style="font-size: 11px; color: var(--md-text-muted);">Categorías activas</div>
+                    </div>
+                    <button class="md-btn md-btn-outlined md-btn-sm" @onclick='() => ExecuteEndpoint("GET", "/api/categories")'>Probar</button>
+                </div>
+
+                <div style="border: 1px solid var(--md-border); border-radius: var(--md-radius-sm); padding: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="md-badge md-badge-success">GET</span>
+                        <strong style="margin-left: 6px;">/api/tables</strong>
+                        <div style="font-size: 11px; color: var(--md-text-muted);">Mesas y comandas</div>
+                    </div>
+                    <button class="md-btn md-btn-outlined md-btn-sm" @onclick='() => ExecuteEndpoint("GET", "/api/tables")'>Probar</button>
+                </div>
+
+                <div style="border: 1px solid var(--md-border); border-radius: var(--md-radius-sm); padding: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="md-badge md-badge-primary">POST</span>
+                        <strong style="margin-left: 6px;">/api/sales</strong>
+                        <div style="font-size: 11px; color: var(--md-text-muted);">Enviar venta desde terminal hija</div>
+                    </div>
+                    <button class="md-btn md-btn-outlined md-btn-sm" @onclick='() => ExecuteEndpoint("POST", "/api/sales")'>Probar</button>
+                </div>
+
+                <div style="border: 1px solid var(--md-border); border-radius: var(--md-radius-sm); padding: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="md-badge md-badge-info">GET</span>
+                        <strong style="margin-left: 6px;">/api/sync/pull</strong>
+                        <div style="font-size: 11px; color: var(--md-text-muted);">Descarga consolidada para sincronización</div>
+                    </div>
+                    <button class="md-btn md-btn-outlined md-btn-sm" @onclick='() => ExecuteEndpoint("GET", "/api/sync/pull")'>Probar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Response Console -->
+        <div class="md-card">
+            <div class="md-card-header">
+                <div class="md-card-title">🖥️ Consola de Respuesta HTTP</div>
+                <span class="md-badge md-badge-info">@lastStatus</span>
+            </div>
+
+            <pre style="background: #1e1e1e; color: #a9ff68; padding: 14px; border-radius: var(--md-radius-sm); font-family: 'Courier New', monospace; font-size: 12px; height: 350px; overflow-y: auto; white-space: pre-wrap;">@responseJson</pre>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int serverPort = 5055;
+    private string authToken = "PASTELERIA_TOKEN_2026";
+    private string responseJson = "// Haga clic en 'Probar' en cualquiera de los endpoints para ver la respuesta en vivo.";
+    private string lastStatus = "Esperando";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!ServerService.IsRunning)
+        {
+            await ServerService.StartAsync(serverPort, authToken);
+        }
+    }
+
+    private async Task StartServer()
+    {
+        await ServerService.StartAsync(serverPort, authToken);
+    }
+
+    private void StopServer()
+    {
+        ServerService.Stop();
+    }
+
+    private void ViewSwaggerSpec()
+    {
+        responseJson = ServerService.GetOpenApiSpecification();
+        lastStatus = "200 OK (OpenAPI Spec)";
+    }
+
+    private async Task ExecuteEndpoint(string method, string path)
+    {
+        if (!ServerService.IsRunning)
+        {
+            await ServerService.StartAsync(serverPort, authToken);
+        }
+
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var url = $"http://localhost:{serverPort}{path}";
+            using var req = new HttpRequestMessage(new HttpMethod(method), url);
+            req.Headers.Add("X-Auth-Token", authToken);
+
+            if (method == "POST")
+            {
+                var sampleSale = new Sale
+                {
+                    InvoiceNumber = $"VTA-REMOTE-{DateTime.Now.Ticks % 1000:D3}",
+                    CustomerName = "Cliente Remoto Hija",
+                    Subtotal = 150,
+                    IvaAmount = 22.50m,
+                    TotalCordobas = 172.50m,
+                    TotalUSD = 4.71m,
+                    SaleDate = DateTime.Now
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(sampleSale);
+                req.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            }
+
+            var res = await client.SendAsync(req);
+            lastStatus = $"{(int)res.StatusCode} {res.ReasonPhrase}";
+            var body = await res.Content.ReadAsStringAsync();
+
+            try
+            {
+                var parsedJson = System.Text.Json.JsonSerializer.Deserialize<object>(body);
+                responseJson = System.Text.Json.JsonSerializer.Serialize(parsedJson, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            }
+            catch
+            {
+                responseJson = body;
+            }
+        }
+        catch (Exception ex)
+        {
+            lastStatus = "Error";
+            responseJson = $"Excepción al ejecutar endpoint: {ex.Message}";
+        }
+    }
+}
