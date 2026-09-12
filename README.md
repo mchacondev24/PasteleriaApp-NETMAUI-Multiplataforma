@@ -1,5 +1,9 @@
 # 🍰 PasteleriaApp - Sistema POS & Gestión Integral de Pastelería (.NET MAUI Multiplataforma)
 
+<p align="center">
+  <img src="docs/images/banner.jpg" alt="PasteleriaApp Banner" width="100%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);" />
+</p>
+
 > **Sistema de Punto de Venta (POS), Producción, Inventario y Facturación Fiscal DGI adaptado para Pastelerías, Panaderías, Cafeterías y Reposterías.**
 > Compatible con **Windows Desktop, Android e iOS** desarrollado con **.NET MAUI Blazor Hybrid (.NET 10)** y diseño **Material UI**.
 
