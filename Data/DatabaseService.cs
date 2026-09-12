@@ -16,13 +16,25 @@ namespace PasteleriaApp.Data
 
         public DatabaseService()
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var appDir = Path.Combine(appData, "PasteleriaApp");
-            if (!Directory.Exists(appDir))
+            try
             {
-                Directory.CreateDirectory(appDir);
+                var appDir = FileSystem.AppDataDirectory;
+                if (!Directory.Exists(appDir))
+                {
+                    Directory.CreateDirectory(appDir);
+                }
+                _dbPath = Path.Combine(appDir, "pasteleria.db3");
             }
-            _dbPath = Path.Combine(appDir, "pasteleria.db3");
+            catch
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var appDir = Path.Combine(appData, "PasteleriaApp");
+                if (!Directory.Exists(appDir))
+                {
+                    Directory.CreateDirectory(appDir);
+                }
+                _dbPath = Path.Combine(appDir, "pasteleria.db3");
+            }
         }
 
         public string GetDatabasePath() => _dbPath;

@@ -6,6 +6,13 @@ public static class MauiProgram
 {
 	public static MauiApp CreateMauiApp()
 	{
+		// Initialize SQLite provider for Android/Cross-platform
+		try
+		{
+			SQLitePCL.Batteries_V2.Init();
+		}
+		catch { }
+
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()

@@ -28,7 +28,11 @@ namespace PasteleriaApp.Services.Hardware
         {
             try
             {
-                return SerialPort.GetPortNames();
+                if (OperatingSystem.IsWindows())
+                {
+                    return SerialPort.GetPortNames();
+                }
+                return new[] { "VIRTUAL_SCALE", "BALANZA_BLUETOOTH" };
             }
             catch
             {
@@ -39,7 +43,7 @@ namespace PasteleriaApp.Services.Hardware
         public bool Connect(string portName = "COM1", int baudRate = 9600, string unit = "Lb")
         {
             _unit = unit;
-            if (portName == "VIRTUAL_SCALE" || string.IsNullOrWhiteSpace(portName))
+            if (portName == "VIRTUAL_SCALE" || string.IsNullOrWhiteSpace(portName) || !OperatingSystem.IsWindows())
             {
                 _isSimulated = true;
                 _isConnected = true;

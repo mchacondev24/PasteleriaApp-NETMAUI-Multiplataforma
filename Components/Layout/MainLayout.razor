@@ -58,14 +58,22 @@
             if (settings != null)
             {
                 exchangeRate = settings.UsdExchangeRate;
-                if (settings.SelectedTheme == "dark")
-                {
-                    isDark = true;
-                    await JSRuntime.InvokeVoidAsync("pasteleriaApp.setTheme", "dark");
-                }
+                isDark = settings.SelectedTheme == "dark";
             }
         }
         catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && isDark)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("pasteleriaApp.setTheme", "dark");
+            }
+            catch { }
+        }
     }
 
     private async Task ToggleTheme()

@@ -13,6 +13,8 @@ namespace PasteleriaApp.Services.Cloud
         private bool _isTimerRunning = false;
         private string _targetHour = "22:00"; // default 10 PM
 
+        public bool IsTimerRunning => _isTimerRunning;
+
         public event Action<string>? OnBackupCompleted;
         public event Action<string>? OnBackupError;
 
@@ -53,8 +55,16 @@ namespace PasteleriaApp.Services.Cloud
             try
             {
                 var backupJson = await _databaseService.ExportDatabaseJsonAsync();
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var backupDir = Path.Combine(appData, "PasteleriaApp", "Backups");
+                string baseDir;
+                try
+                {
+                    baseDir = FileSystem.AppDataDirectory;
+                }
+                catch
+                {
+                    baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                }
+                var backupDir = Path.Combine(baseDir, "PasteleriaApp", "Backups");
                 if (!Directory.Exists(backupDir))
                 {
                     Directory.CreateDirectory(backupDir);

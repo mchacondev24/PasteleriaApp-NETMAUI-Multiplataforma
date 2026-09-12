@@ -47,7 +47,7 @@ namespace PasteleriaApp.Services.Network
 
                 _ = Task.Run(() => ListenLoopAsync(_cts.Token));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 try
                 {
